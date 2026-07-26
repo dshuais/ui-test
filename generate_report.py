@@ -63,7 +63,7 @@ def get_duration_ms(container):
 
 
 def collect_screenshots():
-    """收集 screenshots 目录中的截图，按时间倒序排列"""
+    """收集 screenshots 目录中的截图"""
     screenshots = []
     if not SCREENSHOT_DIR.exists():
         return screenshots
@@ -74,6 +74,47 @@ def collect_screenshots():
             "size": f.stat().st_size,
         })
     return screenshots
+
+
+def copy_step_screenshots(results_map):
+    """复制步骤中嵌入的截图到 HTML 目录，返回 {source_name: relative_path}"""
+    import shutil
+    step_ss_dir = HTML_DIR / "step-screenshots"
+    if step_ss_dir.exists():
+        shutil.rmtree(step_ss_dir)
+    step_ss_dir.mkdir(parents=True, exist_ok=True)
+    mapping = {}
+
+    for uuid, result in results_map.items():
+        for step in result.get("steps", []):
+            for att in step.get("attachments", []):
+                if att.get("type") == "image/png":
+                    src = att.get("source", "")
+                    src_file = RAW_DIR / src
+                    if src_file.exists():
+                        dest = step_ss_dir / src
+                        if not dest.exists():
+                            shutil.copy2(src_file, dest)
+                        mapping[src] = f"step-screenshots/{src}"
+
+    return mapping
+
+
+def get_step_screenshots(steps, mapping):
+    """为步骤列表提取对应的截图路径"""
+    ss_list = []
+    for step in steps:
+        for att in step.get("attachments", []):
+            if att.get("type") == "image/png":
+                src = att.get("source", "")
+                path = mapping.get(src, "")
+                if path:
+                    ss_list.append({
+                        "step_name": step.get("name", ""),
+                        "path": path,
+                        "name": att.get("name", src[:30]),
+                    })
+    return ss_list
 
 
 def fmt_duration(ms):
@@ -93,6 +134,7 @@ def fmt_duration(ms):
 def build_report():
     results_map, containers = build_id_map()
     all_screenshots = {s["name"]: s for s in collect_screenshots()}
+    step_ss_map = copy_step_screenshots(results_map)
 
     # 合并 result + container
     merged = []
@@ -155,13 +197,43 @@ def build_report():
                 <div class="thumb-label" style="color:{border_color}">{label}</div>
             </div>"""
 
-        # Allure 步骤
-        steps_html = ""
-        for s in r.get("steps", []):
-            s_name = s.get("name", "")
-            s_status = s.get("status", "passed")
-            s_class = "step-pass" if s_status == "passed" else "step-fail"
-            steps_html += f'<span class="step {s_class}">{s_name}</span>'
+        # Allure 步骤（折叠显示）
+        steps = r.get("steps", [])
+        step_count = len(steps)
+        fail_count = sum(1 for s in steps if s.get("status") not in ("passed",))
+        steps_id = f"steps-{idx}"
+        step_ss_list = get_step_screenshots(steps, step_ss_map)
+
+        if steps:
+            fail_text = f"（{fail_count} 失败）" if fail_count > 0 else ""
+            ss_count = len(step_ss_list)
+            ss_hint = f" 📷{ss_count}" if ss_count > 0 else ""
+            steps_html = f"""<span class="step-toggle" onclick="var d=document.getElementById('{steps_id}');var t=this;d.classList.toggle('open');t.classList.toggle('open');var a=t.querySelector('.arrow');a.textContent=d.classList.contains('open')?'▼':'▶'"><span class="arrow">▶</span> {step_count} 步{ss_hint}{fail_text}</span>"""
+            # 步骤展开区放在行下方
+            steps_row = ""
+            if steps:
+                steps_row = f"""
+        <tr class="step-row" id="{steps_id}">
+            <td colspan="9" class="step-cell">
+                <div class="step-detail">"""
+                for s in steps:
+                    s_name = s.get("name", "")
+                    s_status = s.get("status", "passed")
+                    s_class = "step-pass" if s_status == "passed" else "step-fail"
+                    icon = "✓" if s_status == "passed" else "✗"
+
+                    # 该步骤的截图
+                    step_ss_html = ""
+                    for ss in step_ss_list:
+                        if ss["step_name"] == s_name:
+                            step_ss_html += f'<img src="{ss["path"]}" class="step-ss" onclick="event.stopPropagation();openLightbox(\'{ss["path"]}\')" title="{ss["name"]}" />'
+
+                    steps_row += f'<div class="step {s_class}">{icon} {s_name}{step_ss_html}</div>'
+                steps_row += """</div>
+            </td>
+        </tr>"""
+        else:
+            steps_html = ""
 
         rows += f"""
         <tr class="{status_class}">
@@ -171,9 +243,11 @@ def build_report():
             <td>{story}</td>
             <td class="center"><span class="badge severity-{labels.get('severity', '')}">{severity}</span></td>
             <td class="center"><span class="badge status-{status}">{STATUS_CN.get(status, status)}</span></td>
-            <td class="right">{duration}</td>
-            <td>{ss_html}</td>
-        </tr>"""
+            <td class="center">{duration}</td>
+            <td class="steps-col">{steps_html}</td>
+            <td class="screenshot-col">{ss_html}</td>
+        </tr>
+        {steps_row}"""
 
     # ─── 截图画廊（按用例分组）──────────────────────
     # 将截图按测试方法分组
@@ -277,10 +351,19 @@ tr.skip {{ background: #fafafa; color: #adb5bd; }}
 .severity-normal {{ background: #3498db; color: #fff; }}
 .severity-minor {{ background: #95a5a6; color: #fff; }}
 
-/* Steps */
-.step {{ font-size: 11px; padding: 2px 8px; border-radius: 4px; margin: 2px 4px 2px 0; display: inline-block; }}
-.step-pass {{ color: #27ae60; background: #eafaf1; }}
-.step-fail {{ color: #e74c3c; background: #fdedec; }}
+/* Steps - expand below row */
+.step-toggle {{ font-size: 12px; color: #3498db; cursor: pointer; user-select: none; border-bottom: 1px dashed #3498db; white-space: nowrap; }}
+.step-toggle:hover {{ color: #2980b9; }}
+.step-toggle.open {{ color: #2c3e50; border-bottom: none; }}
+.step-row {{ display: none; }}
+.step-row.open {{ display: table-row; }}
+.step-cell {{ padding: 0 !important; }}
+.step-cell .step-detail {{ padding: 16px 24px; background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%); text-align: left; display: flex; flex-wrap: wrap; gap: 4px 12px; border-top: 1px solid #e0e7ff; border-bottom: 2px solid #e0e7ff; }}
+.step {{ font-size: 12px; padding: 4px 10px; border-radius: 4px; color: #2c3e50; display: inline-flex; align-items: center; gap: 4px; }}
+.step-pass {{ }}
+.step-fail {{ color: #e74c3c; font-weight: 600; background: #fff0f0; }}
+.step-ss {{ width: 160px; height: 90px; object-fit: cover; border-radius: 6px; margin-top: 6px; margin-left: 20px; display: block; border: 1px solid #e0e7ff; cursor: pointer; transition: transform .2s; }}
+.step-ss:hover {{ transform: scale(1.03); box-shadow: 0 2px 8px rgba(0,0,0,.1); }}
 
 /* Screenshots */
 .screenshot-thumb {{ display: inline-block; cursor: pointer; margin: 2px; }}
@@ -327,7 +410,7 @@ tr.skip {{ background: #fafafa; color: #adb5bd; }}
 <div class="table-wrap">
     <table>
     <thead>
-        <tr><th>#</th><th>用例名称</th><th>功能模块</th><th>用户故事</th><th>优先级</th><th>状态</th><th>耗时</th><th>截图</th></tr>
+        <tr><th>#</th><th>用例名称</th><th>功能模块</th><th>用户故事</th><th>优先级</th><th>状态</th><th>耗时</th><th>步骤</th><th>截图</th></tr>
     </thead>
     <tbody>{rows}</tbody>
     </table>
@@ -361,10 +444,11 @@ document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeLightb
     HTML_DIR.mkdir(parents=True, exist_ok=True)
     (HTML_DIR / "index.html").write_text(html, encoding="utf-8")
 
+    step_ss_count = len(list((HTML_DIR / "step-screenshots").glob("*.png"))) if (HTML_DIR / "step-screenshots").exists() else 0
     print(f"报告已生成: {HTML_DIR}/index.html")
     print(f"  总计: {total} | 通过: {len(passed)} | 失败: {len(failed)} | 跳过: {len(skipped)}")
     print(f"  通过率: {pass_rate:.1f}% | 总耗时: {fmt_duration(total_duration)}")
-    print(f"  截图: {len(all_screenshots)} 张")
+    print(f"  截图: {len(all_screenshots)} 张 (conftest) + {step_ss_count} 张 (步骤内)")
 
 
 if __name__ == "__main__":

@@ -62,7 +62,7 @@ def pytest_runtest_makereport(item, call):
     report = outcome.get_result()
 
     if report.when == "call":
-        page = item.funcargs.get("page", None)
+        page = item.funcargs.get("page", None) or item.funcargs.get("shared_page", None)
         if page:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

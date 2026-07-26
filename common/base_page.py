@@ -1,8 +1,12 @@
-"""PO 基类：封装所有页面公用的等待、操作、截图能力"""
+"""PO 基类：封装所有页面公用的等待、操作、截图能力
+
+所有关键操作通过 @allure.step 自动记录步骤到 Allure 报告
+"""
 import logging
 from datetime import datetime
 from pathlib import Path
 
+import allure
 from playwright.sync_api import Page, expect
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -21,44 +25,40 @@ class BasePage:
     # ─── 等待方法 ─────────────────────────────────────
 
     def wait_for_visible(self, selector: str, timeout: int = 10000) -> None:
-        """等待元素可见"""
-        logger.info(f"等待元素可见: {selector}")
+        """等待元素可见（内部方法，不计入步骤）"""
         self.page.wait_for_selector(selector, state="visible", timeout=timeout)
 
     def wait_for_clickable(self, selector: str, timeout: int = 10000) -> None:
-        """等待元素可点击"""
-        logger.info(f"等待元素可点击: {selector}")
+        """等待元素可点击（内部方法，不计入步骤）"""
         self.page.wait_for_selector(selector, state="visible", timeout=timeout)
 
     def wait_for_hidden(self, selector: str, timeout: int = 10000) -> None:
-        """等待元素隐藏（如 loading 遮罩消失）"""
-        logger.info(f"等待元素隐藏: {selector}")
+        """等待元素隐藏（内部方法，不计入步骤）"""
         self.page.wait_for_selector(selector, state="hidden", timeout=timeout)
 
     def wait_for_network_idle(self, timeout: int = 30000) -> None:
-        """等待网络空闲（页面加载完成）"""
-        logger.info("等待网络空闲...")
+        """等待网络空闲（内部方法，不计入步骤）"""
         self.page.wait_for_load_state("networkidle", timeout=timeout)
 
     # ─── 操作方法 ─────────────────────────────────────
 
+    @allure.step("点击 '{selector}'")
     def click(self, selector: str) -> None:
         """点击元素（含异常捕获 + 自动截图）"""
         try:
             self.wait_for_clickable(selector)
             self.page.click(selector)
-            logger.info(f"点击元素成功: {selector}")
         except Exception as e:
             self._take_screenshot(f"click_failed_{self._safe_name(selector)}")
             logger.error(f"点击元素失败: {selector}, 错误: {e}")
             raise
 
+    @allure.step("输入 '{text}'")
     def fill(self, selector: str, text: str) -> None:
         """输入文本（含异常捕获 + 自动截图）"""
         try:
             self.wait_for_visible(selector)
             self.page.fill(selector, text)
-            logger.info(f"输入文本成功: {selector}")
         except Exception as e:
             self._take_screenshot(f"fill_failed_{self._safe_name(selector)}")
             logger.error(f"输入文本失败: {selector}, 错误: {e}")
@@ -68,7 +68,6 @@ class BasePage:
         """获取元素文本内容"""
         self.wait_for_visible(selector)
         text = self.page.text_content(selector) or ""
-        logger.info(f"获取文本: {selector} = {text}")
         return text.strip()
 
     def is_visible(self, selector: str, timeout: int = 5000) -> bool:
@@ -79,9 +78,9 @@ class BasePage:
         except Exception:
             return False
 
+    @allure.step("跳转到 {url}")
     def navigate(self, url: str) -> None:
         """跳转到指定 URL 并等待网络空闲"""
-        logger.info(f"导航到: {url}")
         self.page.goto(url)
         self.wait_for_network_idle()
 

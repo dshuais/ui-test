@@ -1,6 +1,7 @@
 """登录页面对象：封装登录页元素定位与操作"""
 import logging
 
+import allure
 from playwright.sync_api import Page
 
 from common.base_page import BasePage
@@ -64,6 +65,7 @@ class LoginPage(BasePage):
         """等待企业选择弹窗出现，返回是否出现"""
         return self.is_visible(self.ENTERPRISE_MODAL, timeout=10000)
 
+    @allure.step("选择企业")
     def select_first_enterprise(self) -> None:
         """选择第一个企业（默认选中列表中的第一项）"""
         logger.info("等待企业选择弹窗...")
@@ -71,20 +73,17 @@ class LoginPage(BasePage):
         logger.info("选择第一个企业")
         self.click(f"{self.ENTERPRISE_MODAL} {self.ENTERPRISE_CARD}")
         self.wait_for_network_idle()
-        # 等待弹窗关闭
         self.wait_for_hidden(self.ENTERPRISE_MODAL, timeout=10000)
         logger.info("企业选择完成，弹窗已关闭")
 
+    @allure.step("登录系统")
     def login(
         self,
         username: str = None,
         password: str = None,
         select_enterprise: bool = True,
     ) -> None:
-        """完整登录流程：输入账号密码 → 点击登录 → 选择企业
-
-        参数默认从 data/account.json 读取 valid 账号
-        """
+        """完整登录流程：输入账号密码 → 点击登录 → 选择企业"""
         if username is None:
             username = get_account("valid", "username")
         if password is None:
@@ -96,7 +95,6 @@ class LoginPage(BasePage):
         self.fill_password(password)
         self.click_login_button()
 
-        # 登录成功后选择企业
         if select_enterprise:
             self.select_first_enterprise()
 

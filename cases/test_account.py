@@ -1,63 +1,36 @@
-"""账户管理模块测试用例
+"""账户管理模块 — 同一账户的完整生命周期测试
 
-基于 src/pages/system/basic/account-management/ 分析自动生成
-包含: 页面加载、Tab 切换、搜索、新增往来账户、新增本方账户
+流程：新增 → 禁用 → 启用 → 删除
+同一个账户从头到尾，截图只在操作完成后验证时刻。
 """
-import logging
+import time
 
 import allure
 import pytest
 
 from pages.account_page import AccountPage
 from pages.login_page import LoginPage
-
-logger = logging.getLogger("ui_auto")
+from common.browser_engine import BrowserEngine
+from common.utils import get_config
 
 
 @allure.feature("系统管理")
 @allure.story("账户管理")
 class TestAccount:
 
-    @allure.title("正向用例：账户管理页面加载")
-    @allure.severity(allure.severity_level.CRITICAL)
-    def test_account_list_loads(self, page):
-        logger.info("========== test_account_list_loads 开始 ==========")
+    acct_name = ""
+    acct_no = ""
 
-        login_page = LoginPage(page)
-        login_page.login()
+    @pytest.fixture(scope="class")
+    def shared_page(self, browser_engine: BrowserEngine):
+        """共享一个 page，所有用例串行执行"""
+        browser, context, page = browser_engine.new_context()
 
-        account_page = AccountPage(page)
-        account_page.navigate()
-
-        assert account_page.is_page_loaded(), "账户管理表格未加载"
-
-        logger.info("========== test_account_list_loads 通过 ==========")
-
-    @allure.title("正向用例：切换到本方账户 Tab")
-    @allure.severity(allure.severity_level.NORMAL)
-    def test_account_switch_tab(self, page):
-        logger.info("========== test_account_switch_tab 开始 ==========")
-
-        login_page = LoginPage(page)
-        login_page.login()
-
-        account_page = AccountPage(page)
-        account_page.navigate()
-
-        # 切换到本方账户
-        account_page.switch_to_self_tab()
-        assert account_page.is_page_loaded(), "切换 Tab 后表格应仍显示"
-
-        # 切回往来账户
-        account_page.switch_to_customer_tab()
-        assert account_page.is_page_loaded(), "切回往来账户表格应仍显示"
-
-        logger.info("========== test_account_switch_tab 通过 ==========")
-
-    @allure.title("正向用例：新增往来账户")
-    @allure.severity(allure.severity_level.CRITICAL)
-    def test_add_customer_account(self, page):
-        logger.info("========== test_add_customer_account 开始 ==========")
+        try:
+            page.goto(get_config("base_url"), wait_until="domcontentloaded")
+            page.evaluate("() => { localStorage.setItem('debug_micro_apps', 'web-erp'); }")
+        except Exception:
+            pass
 
         login_page = LoginPage(page)
         login_page.login()
@@ -66,56 +39,56 @@ class TestAccount:
         account_page.navigate()
         account_page.switch_to_customer_tab()
 
-        # 新增一条往来账户
-        import time
-        ts = str(int(time.time()))[-6:]  # 用时间戳后6位避免重复
-        acct_no = "62" + ts
-        acct_name = f"测试户名{ts}"
+        ts = str(int(time.time()))[-6:]
+        TestAccount.acct_no = "62" + ts
+        TestAccount.acct_name = f"自动化测试{ts}"
+
+        yield page
+        context.close()
+
+    @allure.title("1. 新增往来账户")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_01_add(self, shared_page):
+        account_page = AccountPage(shared_page)
 
         account_page.add_account(
-            acct_no=acct_no,
-            acct_name=acct_name,
+            acct_no=TestAccount.acct_no,
+            acct_name=TestAccount.acct_name,
             bank_name="中国银行",
             remark="自动化测试",
-            customer_name="腾讯",
             is_self=False,
         )
+        with allure.step("验证：新增后列表"):
+            account_page.attach_screenshot("新增后列表")
+            assert account_page.is_row_visible(TestAccount.acct_name), \
+                f"新增后表格中应包含 {TestAccount.acct_name}"
 
-        # 搜索验证新增成功
-        account_page.search_by_cust_name("腾讯")
-
-        assert account_page.is_page_loaded(), "新增账户后表格应仍显示"
-        logger.info(f"新增往来账户: {acct_no} / {acct_name}")
-
-        logger.info("========== test_add_customer_account 通过 ==========")
-
-    @allure.title("正向用例：新增本方账户")
+    @allure.title("2. 禁用账户")
     @allure.severity(allure.severity_level.CRITICAL)
-    def test_add_self_account(self, page):
-        logger.info("========== test_add_self_account 开始 ==========")
+    def test_02_disable(self, shared_page):
+        account_page = AccountPage(shared_page)
+        account_page.disable_account(TestAccount.acct_name)
+        with allure.step("验证：禁用后列表"):
+            account_page.attach_screenshot("禁用后列表")
+            assert account_page.is_page_loaded()
 
-        login_page = LoginPage(page)
-        login_page.login()
+    @allure.title("3. 启用账户")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_03_enable(self, shared_page):
+        account_page = AccountPage(shared_page)
+        account_page.enable_account(TestAccount.acct_name)
+        with allure.step("验证：启用后列表"):
+            account_page.attach_screenshot("启用后列表")
+            assert account_page.is_page_loaded()
 
-        account_page = AccountPage(page)
-        account_page.navigate()
-        account_page.switch_to_self_tab()
+    @allure.title("4. 删除账户")
+    @allure.severity(allure.severity_level.CRITICAL)
+    def test_04_delete(self, shared_page):
+        account_page = AccountPage(shared_page)
 
-        # 新增一条本方账户
-        import time
-        ts = str(int(time.time()))[-6:]
-        acct_no = ts
-        acct_name = f"本方测试{ts}"
-
-        account_page.add_account(
-            acct_no=acct_no,
-            acct_name=acct_name,
-            bank_name="中国银行",
-            remark="自动化本方测试",
-            is_self=True,
-        )
-
-        assert account_page.is_page_loaded(), "新增本方账户后表格应仍显示"
-        logger.info(f"新增本方账户: {acct_no} / {acct_name}")
-
-        logger.info("========== test_add_self_account 通过 ==========")
+        account_page.disable_account(TestAccount.acct_name)
+        account_page.delete_account(TestAccount.acct_name)
+        with allure.step("验证：删除后列表"):
+            account_page.attach_screenshot("删除后列表")
+            assert not account_page.is_row_visible(TestAccount.acct_name), \
+                f"删除后表格中不应再包含 {TestAccount.acct_name}"
