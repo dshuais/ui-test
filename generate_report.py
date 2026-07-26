@@ -70,16 +70,16 @@ def collect_screenshots():
     for f in sorted(SCREENSHOT_DIR.glob("*.png"), reverse=True):
         screenshots.append({
             "name": f.name,
-            "path": f"../screenshots/{f.name}",
+            "path": f"../../screenshots/{f.name}",
             "size": f.stat().st_size,
         })
     return screenshots
 
 
-def copy_step_screenshots(results_map):
+def copy_step_screenshots(results_map, html_dir):
     """复制步骤中嵌入的截图到 HTML 目录，返回 {source_name: relative_path}"""
     import shutil
-    step_ss_dir = HTML_DIR / "step-screenshots"
+    step_ss_dir = html_dir / "step-screenshots"
     if step_ss_dir.exists():
         shutil.rmtree(step_ss_dir)
     step_ss_dir.mkdir(parents=True, exist_ok=True)
@@ -131,10 +131,28 @@ def fmt_duration(ms):
     return f"{minutes}m {secs:.0f}s"
 
 
+def get_module_name(results_map):
+    """从 allure 数据中提取模块名"""
+    packages = set()
+    for r in results_map.values():
+        for l in r.get("labels", []):
+            if l["name"] == "package":
+                # cases.test_product -> product
+                pkg = l["value"].split(".")[-1]
+                packages.add(pkg.replace("test_", ""))
+    return "_".join(sorted(packages)) if packages else "report"
+
+
 def build_report():
     results_map, containers = build_id_map()
     all_screenshots = {s["name"]: s for s in collect_screenshots()}
-    step_ss_map = copy_step_screenshots(results_map)
+
+    # 按模块名生成子目录
+    module_name = get_module_name(results_map)
+    html_dir = ROOT / "reports" / "allure_html" / module_name
+    html_dir.mkdir(parents=True, exist_ok=True)
+
+    step_ss_map = copy_step_screenshots(results_map, html_dir)
 
     # 合并 result + container
     merged = []
@@ -441,14 +459,61 @@ document.addEventListener('keydown', e => {{ if (e.key === 'Escape') closeLightb
 </body>
 </html>"""
 
-    HTML_DIR.mkdir(parents=True, exist_ok=True)
-    (HTML_DIR / "index.html").write_text(html, encoding="utf-8")
+    (html_dir / "index.html").write_text(html, encoding="utf-8")
 
-    step_ss_count = len(list((HTML_DIR / "step-screenshots").glob("*.png"))) if (HTML_DIR / "step-screenshots").exists() else 0
-    print(f"报告已生成: {HTML_DIR}/index.html")
+    step_ss_count = len(list((html_dir / "step-screenshots").glob("*.png"))) if (html_dir / "step-screenshots").exists() else 0
+    print(f"报告已生成: {html_dir}/index.html")
     print(f"  总计: {total} | 通过: {len(passed)} | 失败: {len(failed)} | 跳过: {len(skipped)}")
     print(f"  通过率: {pass_rate:.1f}% | 总耗时: {fmt_duration(total_duration)}")
     print(f"  截图: {len(all_screenshots)} 张 (conftest) + {step_ss_count} 张 (步骤内)")
+
+    # 输出完整测试总结
+    print(f"\n{'='*70}")
+    print(f"  🧪 GGJX ERP UI 自动化测试总结")
+    print(f"{'='*70}")
+    print(f"  模块: {module_name}")
+    print(f"  时间: {now}")
+    print(f"  报告: {html_dir}/index.html")
+    print(f"{'='*70}")
+    print(f"  用例总数: {total}")
+    print(f"  ✅ 通过:   {len(passed)}")
+    print(f"  ❌ 失败:   {len(failed)}")
+    if skipped:
+        print(f"  ⏭️  跳过:   {len(skipped)}")
+    print(f"  通过率:   {pass_rate:.1f}%")
+    print(f"  总耗时:   {fmt_duration(total_duration)}")
+    print(f"  截图:     {len(all_screenshots)} 张（终态）+ {step_ss_count} 张（步骤内）")
+    print(f"{'='*70}")
+
+    # 操作覆盖
+    all_steps = []
+    for r in merged:
+        for s in r.get("steps", []):
+            all_steps.append(s.get("name", ""))
+
+    print(f"  操作覆盖:")
+    step_names = set()
+    for s in all_steps:
+        clean = s.split(":")[0].split("'")[0].strip()
+        if clean and clean not in step_names:
+            step_names.add(clean)
+            print(f"    - {clean}")
+    print(f"{'='*70}")
+
+    # 逐条结果
+    print(f"  用例详情:")
+    for idx, r in enumerate(merged, 1):
+        name = r.get("name", "-")
+        status = r.get("status", "-")
+        icon = {"passed": "✅", "failed": "❌", "broken": "💥"}.get(status, "⏭️")
+        dur = fmt_duration(r.get("duration_ms", 0))
+        steps = r.get("steps", [])
+        step_str = " → ".join(s.get("name", "")[:30] for s in steps[:4])
+        if len(steps) > 4:
+            step_str += f" ... (+{len(steps) - 4}步)"
+        print(f"    {idx}. {icon} {name}  [{dur}]")
+        print(f"       {step_str}")
+    print(f"{'='*70}\n")
 
 
 if __name__ == "__main__":
