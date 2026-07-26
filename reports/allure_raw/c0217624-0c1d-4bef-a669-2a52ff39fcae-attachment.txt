@@ -1,0 +1,17 @@
+INFO     ui_auto:conftest.py:43 已设置 localStorage: debug_micro_apps=web-erp
+INFO     ui_auto:test_login.py:60 ========== test_login_wrong_password 开始 ==========
+INFO     ui_auto:login_page.py:39 访问登录页面: http://erp-dev.guanggujinxin.com
+INFO     ui_auto:base_page.py:40 等待网络空闲...
+INFO     ui_auto:login_page.py:49 输入用户名: 15926689137
+INFO     ui_auto:base_page.py:25 等待元素可见: input[placeholder*='手机']
+INFO     ui_auto:base_page.py:61 输入文本成功: input[placeholder*='手机']
+INFO     ui_auto:login_page.py:54 输入密码: ******
+INFO     ui_auto:base_page.py:25 等待元素可见: input[type='password']
+INFO     ui_auto:base_page.py:61 输入文本成功: input[type='password']
+INFO     ui_auto:login_page.py:59 点击登录按钮
+INFO     ui_auto:base_page.py:30 等待元素可点击: button:has-text('登 录')
+INFO     ui_auto:base_page.py:50 点击元素成功: button:has-text('登 录')
+INFO     ui_auto:base_page.py:40 等待网络空闲...
+INFO     ui_auto:test_login.py:81 ========== test_login_wrong_password 通过 ==========
+INFO     ui_auto:conftest.py:51 ===== 用例上下文已关闭 =====
+INFO     ui_auto:conftest.py:27 ===== Playwright 引擎已关闭 =====

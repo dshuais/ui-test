@@ -1,0 +1,11 @@
+{
+  "base_url": "http://erp-dev.guanggujinxin.com",
+  "browser": {
+    "headless": false,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "timeout": 15000
+  }
+}
