@@ -17,13 +17,13 @@ echo "========================================"
 echo "[1/3] 执行测试用例..."
 pytest cases/ --alluredir=reports/allure_raw || echo "部分用例失败（非致命），继续生成报告..."
 
-# 2. 根据原始数据生成静态 HTML 报告
-echo "[2/3] 生成 Allure HTML 报告..."
-allure generate reports/allure_raw -o reports/allure_html --clean
+# 2. 根据原始数据生成静态 HTML 报告（无需 Java / allure CLI）
+echo "[2/3] 生成 HTML 报告..."
+python3 generate_report.py
 
-# 3. 打开 Allure 报告
-echo "[3/3] 打开 Allure 报告..."
-allure open reports/allure_html
+# 3. 打开报告
+echo "[3/3] 打开报告..."
+open reports/allure_html/index.html
 
 echo "========================================"
 echo "  执行完毕"

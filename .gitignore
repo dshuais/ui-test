@@ -1,0 +1,14 @@
+# 测试报告 & 产物
+reports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Pytest
+.pytest_cache/
+
+# 虚拟环境
+venv/
+.venv/

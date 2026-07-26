@@ -54,19 +54,24 @@ def page(browser_engine: BrowserEngine):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """
-    用例失败时自动截图并附加到 Allure 报告
+    每个用例执行结束后自动截图并附加到 Allure 报告
+    - 通过用例：截图作为 PASSED_xxx 保存
+    - 失败用例：截图作为 FAILED_xxx 保存
     """
     outcome = yield
     report = outcome.get_result()
 
-    if report.when == "call" and report.failed:
-        # 从 fixture 中获取 page 对象
+    if report.when == "call":
         page = item.funcargs.get("page", None)
         if page:
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            test_name = item.name
-            screenshot_name = f"FAILED_{test_name}_{timestamp}"
+            test_func_name = item.name  # pytest 函数名：test_xxx
+            prefix = "FAILED" if report.failed else "PASSED"
+            screenshot_name = f"{prefix}_{test_func_name}_{timestamp}"
+
+            # 记录函数名到 allure，便于报告匹配截图
+            allure.dynamic.label("testMethod", test_func_name)
             screenshot_path = (
                 __import__("pathlib").Path(__file__).resolve().parent
                 / "reports"
@@ -74,12 +79,18 @@ def pytest_runtest_makereport(item, call):
                 / f"{screenshot_name}.png"
             )
             screenshot_path.parent.mkdir(parents=True, exist_ok=True)
-            page.screenshot(path=str(screenshot_path), full_page=True)
-            logger.error(f"用例失败，截图已保存: {screenshot_path}")
+            try:
+                page.screenshot(path=str(screenshot_path), full_page=True)
+                if report.failed:
+                    logger.error(f"用例失败，截图已保存: {screenshot_path}")
+                else:
+                    logger.info(f"用例通过，截图已保存: {screenshot_path}")
 
-            # 附加到 allure
-            allure.attach(
-                page.screenshot(full_page=True),
-                name=screenshot_name,
-                attachment_type=allure.attachment_type.PNG,
-            )
+                # 附加到 allure
+                allure.attach(
+                    page.screenshot(full_page=True),
+                    name=screenshot_name,
+                    attachment_type=allure.attachment_type.PNG,
+                )
+            except Exception as e:
+                logger.warning(f"截图失败（非致命）: {e}")
