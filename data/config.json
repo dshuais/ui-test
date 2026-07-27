@@ -3,8 +3,8 @@
   "browser": {
     "headless": false,
     "viewport": {
-      "width": 1920,
-      "height": 1080
+      "width": 1536,
+      "height": 695
     },
     "timeout": 15000
   }
